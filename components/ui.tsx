@@ -10,10 +10,10 @@ export function Chip({
   children?: React.ReactNode;
 }) {
   const styles: Record<string, string> = {
-    GEMINI: "border-gemini/50 text-gemini",
-    ENGINE: "border-engine/50 text-engine",
-    FALLBACK: "border-warn/60 text-warn",
-    BANK: "border-muted/50 text-muted",
+    GEMINI: "border-gemini/40 bg-gemini/5 text-gemini",
+    ENGINE: "border-engine/40 bg-engine/5 text-engine",
+    FALLBACK: "border-warn/50 bg-warn/10 text-warn",
+    BANK: "border-line bg-panel-2 text-muted",
   };
   const icon = kind === "GEMINI" ? "✦" : kind === "FALLBACK" ? "△" : "⚙";
   return (
@@ -41,7 +41,7 @@ export function Panel({
 }) {
   return (
     <section
-      className={`rounded-xl border border-line bg-panel p-4 ${flash ? "flash" : ""} ${className}`}
+      className={`rounded-xl border border-line bg-panel p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${flash ? "flash" : ""} ${className}`}
     >
       <header className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
@@ -55,13 +55,13 @@ export function Panel({
 }
 
 export const STATUS_COLOR: Record<string, string> = {
-  MASTERED: "#34d399",
-  STRONG: "#2dd4bf",
-  DEVELOPING: "#60a5fa",
-  WEAK: "#f59e0b",
-  UNKNOWN: "#5b6472",
-  MISCONCEPTION_DETECTED: "#f87171",
-  RESOLVING: "#a78bfa",
+  MASTERED: "#059669",
+  STRONG: "#0d9488",
+  DEVELOPING: "#2563eb",
+  WEAK: "#d97706",
+  UNKNOWN: "#94a3b8",
+  MISCONCEPTION_DETECTED: "#dc2626",
+  RESOLVING: "#7c3aed",
 };
 
 export function MasteryBar({
@@ -75,7 +75,7 @@ export function MasteryBar({
   status?: string;
   delta?: number;
 }) {
-  const color = STATUS_COLOR[status ?? ""] ?? "#60a5fa";
+  const color = STATUS_COLOR[status ?? ""] ?? "#2563eb";
   return (
     <div>
       <div className="flex items-baseline justify-between text-xs">

@@ -12,7 +12,7 @@ Built for **PromptWars** (Google for Developers × H2S).
 
 ```bash
 npm install
-cp .env.example .env   # fill in DATABASE_URL (Postgres) + GEMINI_API_KEY
+cp .env.example .env   # fill in DATABASE_URL (Postgres), GEMINI_API_KEY, AUTH_SECRET
 npm run demo:reset     # push schema + seed the demo learner
 npm run dev            # http://localhost:3000
 ```
@@ -25,7 +25,7 @@ npm run dev            # http://localhost:3000
 
 ## For evaluators
 
-- **No login.** Opening the app clones a private copy of the seeded learner ("Alex") for your browser — your testing never collides with anyone else's. **Reset session** (top right) gives you a fresh clone anytime.
+- **Login is optional.** Test account (per event rules): **demo@shastralab.app / shastra123** - or sign up with any email, or just continue as guest. Opening the app as a guest clones a private copy of the seeded learner ("Alex") for your browser — your testing never collides with anyone else's. **Reset session** (top right) gives you a fresh clone anytime.
 - **Type anything.** Answers are graded by a live Gemini call against a per-question rubric. Try a good answer, a shallow one, and gibberish (`asdfghjkl`) — gibberish is classified `INSUFFICIENT_EVIDENCE` and provably writes **nothing** to the learner model.
 - **Provenance chips on every panel:** `✦ GEMINI` = a real model call (with latency + token receipts); `⚙ ENGINE` = deterministic code, no LLM. If Gemini is ever unavailable, the fallback is **loudly labeled** — this system never fabricates AI output.
 - **"AI reasoning context"** shows the exact compiled prompt sent to Gemini, with the blocks injected from your knowledge graph highlighted. Every execution is also logged verbatim (`PromptExecutionLog`) with model, latency and tokens — the **Lab report** card is computed from those logs.
@@ -79,7 +79,9 @@ lib/fallback.ts       → honest keyword scorer for AI-unavailable moments (labe
 prisma/               → 6 models incl. PromptExecutionLog (the judge-facing proof)
 ```
 
-Stack: Next.js 15 (App Router) · TypeScript · Tailwind · Prisma + Postgres (Neon) · Google Gemini (`@google/genai`, structured output, model env-swappable via `GEMINI_MODEL`).
+Stack: Next.js 15 (App Router) · TypeScript · Tailwind (light, WCAG-AA palette) · Prisma + Postgres (Neon) · Google Gemini (`@google/genai`, structured output, model env-swappable via `GEMINI_MODEL`) · own auth (bcrypt + HMAC-signed httpOnly session cookie; guest mode needs no account).
+
+Auth model: an account binds one learner model to an email (progress survives browsers); guests get a private cookie-keyed clone. "Reset session" re-clones the learner without touching the account.
 
 ## Challenge alignment
 

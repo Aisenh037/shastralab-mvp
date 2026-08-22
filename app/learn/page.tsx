@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { KnowledgeGraph } from "@/components/graph";
 import { Chip, MasteryBar, Panel, STATUS_COLOR } from "@/components/ui";
 
@@ -21,7 +22,8 @@ interface Question {
   difficulty: string; why: string; source: string;
 }
 interface LearnerState {
-  learnerId: string; name: string; topicId: string; bottleneckId: string | null;
+  learnerId: string; name: string; user: { email: string; name: string } | null;
+  topicId: string; bottleneckId: string | null;
   currentQuestion: Question; states: StateRow[]; concepts: ConceptRow[]; edges: EdgeRow[];
   pathOrder: string[]; labTotals: { geminiCalls: number; totalLatencyMs: number; totalTokens: number };
 }
@@ -141,6 +143,11 @@ export default function LearnPage() {
     window.location.reload();
   }
 
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/";
+  }
+
   if (!state) {
     return (
       <main className="flex flex-1 items-center justify-center text-muted">
@@ -173,9 +180,24 @@ export default function LearnPage() {
           <span className="hidden font-mono text-[11px] text-muted sm:inline">diagnose first · teach second</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="font-mono text-[11px] text-muted">
-            learner: {state.name} · topic: {nameById.get(state.topicId)}
+          <span className="hidden font-mono text-[11px] text-muted md:inline">
+            {state.user ? `${state.user.name} (${state.user.email})` : `guest session`} · topic: {nameById.get(state.topicId)}
           </span>
+          {state.user ? (
+            <button
+              onClick={logout}
+              className="rounded-md border border-line px-3 py-1.5 text-xs text-muted transition hover:border-gemini/50 hover:text-gemini"
+            >
+              Log out
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="rounded-md border border-gemini/40 px-3 py-1.5 text-xs text-gemini transition hover:bg-gemini/5"
+            >
+              Sign in
+            </Link>
+          )}
           <button
             onClick={resetSession}
             className="rounded-md border border-line px-3 py-1.5 text-xs text-muted transition hover:border-danger/50 hover:text-danger"
@@ -258,7 +280,7 @@ export default function LearnPage() {
               <button
                 onClick={submit}
                 disabled={running || !answer.trim()}
-                className="rounded-lg bg-gemini px-5 py-2 text-sm font-medium text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg bg-gemini px-5 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {running ? "Diagnosing…" : "Submit for diagnosis"}
               </button>

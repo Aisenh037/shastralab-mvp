@@ -31,15 +31,24 @@ export default function Home() {
             personalized interventions, every call logged and inspectable.
           </li>
         </ul>
-        <Link
-          href="/learn"
-          className="mt-8 inline-block rounded-lg bg-gemini px-6 py-3 text-sm font-medium text-black transition hover:opacity-90"
-        >
-          Enter the lab -&gt;
-        </Link>
+        <div className="mt-8 flex flex-wrap items-center gap-3">
+          <Link
+            href="/learn"
+            className="inline-block rounded-lg bg-gemini px-6 py-3 text-sm font-medium text-white transition hover:opacity-90"
+          >
+            Enter the lab -&gt;
+          </Link>
+          <Link
+            href="/login"
+            className="inline-block rounded-lg border border-line px-6 py-3 text-sm font-medium text-foreground transition hover:border-gemini/50 hover:text-gemini"
+          >
+            Log in / Sign up
+          </Link>
+        </div>
         <p className="mt-4 text-xs text-muted">
           Demo session: Alex, resuming <span className="text-foreground">Binary Search</span>.
-          No login needed - you get your own private copy of the learner model.
+          Guests get a private copy of the learner model - an account keeps yours across devices.
+          <span className="mt-1 block font-mono">test account: demo@shastralab.app / shastra123</span>
         </p>
       </div>
     </main>

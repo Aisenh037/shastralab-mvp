@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 /** Full learner state for the UI: graph, states, current question, Lab Report totals. */
 export async function GET() {
   try {
-    const { learnerId, created } = await getOrCreateLearner();
+    const { learnerId, created, user } = await getOrCreateLearner();
     const [learner, concepts, edges, totals, recentLogs] = await Promise.all([
       prisma.learner.findUniqueOrThrow({ where: { id: learnerId }, include: { states: true } }),
       prisma.concept.findMany(),
@@ -28,6 +28,7 @@ export async function GET() {
 
     const res = NextResponse.json({
       learnerId,
+      user,
       name: learner.name,
       topicId: learner.topicId,
       bottleneckId: learner.bottleneckId,

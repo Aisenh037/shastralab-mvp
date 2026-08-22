@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 import { CONCEPTS, EDGES, OPENING_QUESTION, TEMPLATE_STATES } from "../lib/seed-data";
 import { deriveStatus } from "../lib/engine/mastery";
 
@@ -48,7 +49,14 @@ async function main() {
       create: { learnerId: template.id, ...s, status },
     });
   }
-  console.log("Seeded concepts, edges, and template learner:", template.id);
+  // Evaluator test account (credentials shared in README, per event rules).
+  const demoHash = await bcrypt.hash("shastra123", 10);
+  await prisma.user.upsert({
+    where: { email: "demo@shastralab.app" },
+    update: { passwordHash: demoHash },
+    create: { email: "demo@shastralab.app", name: "Demo Evaluator", passwordHash: demoHash },
+  });
+  console.log("Seeded concepts, edges, template learner and demo user:", template.id);
 }
 
 main()

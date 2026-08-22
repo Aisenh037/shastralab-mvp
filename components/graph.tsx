@@ -56,7 +56,7 @@ export function KnowledgeGraph({
               y1={f.graphY + 14}
               x2={t.graphX + 20}
               y2={t.graphY + 14}
-              stroke={hot ? "#8b9cf9" : e.type === "PREREQUISITE_OF" ? "#3a4356" : "#2a3040"}
+              stroke={hot ? "#4f46e5" : e.type === "PREREQUISITE_OF" ? "#94a3b8" : "#cbd5e1"}
               strokeWidth={hot ? 2.5 : 1.5}
               strokeDasharray={e.type === "RELATED_TO" ? "5 4" : e.type === "COMMONLY_CONFUSED_WITH" ? "2 3" : undefined}
             />
@@ -71,14 +71,14 @@ export function KnowledgeGraph({
         return (
           <g key={c.id}>
             {isBottleneck && (
-              <circle cx={c.graphX + 20} cy={c.graphY + 14} r={r + 5} fill="none" stroke="#8b9cf9" strokeWidth={1.5} strokeDasharray="3 3" />
+              <circle cx={c.graphX + 20} cy={c.graphY + 14} r={r + 5} fill="none" stroke="#4f46e5" strokeWidth={1.5} strokeDasharray="3 3" />
             )}
-            <circle cx={c.graphX + 20} cy={c.graphY + 14} r={r} fill={color} fillOpacity={0.85} />
+            <circle cx={c.graphX + 20} cy={c.graphY + 14} r={r} fill={color} fillOpacity={0.95} />
             <text
               x={c.graphX + 20}
               y={c.graphY + 14 + r + 12}
               textAnchor="middle"
-              className="fill-[#8a93a5]"
+              className="fill-[#5a6577]"
               style={{ fontSize: 9.5 }}
             >
               {c.name}
@@ -89,7 +89,7 @@ export function KnowledgeGraph({
                 y={c.graphY + 17.5}
                 textAnchor="middle"
                 style={{ fontSize: 8.5, fontWeight: 600 }}
-                className="fill-black/80"
+                className="fill-white"
               >
                 {Math.round(s.mastery * 100)}
               </text>

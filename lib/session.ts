@@ -1,31 +1,20 @@
 import { cookies } from "next/headers";
 import { prisma } from "./db";
+import { currentUser } from "./auth";
 
 export const LEARNER_COOKIE = "sl_learner";
 
-/**
- * Per-visitor sessions: every browser gets its own clone of the seeded "Alex"
- * template, so concurrent evaluators never share (or dirty) a knowledge graph.
- * Returns the learner id and whether a new clone was created (the caller sets
- * the cookie on its response when created=true).
- */
-export async function getOrCreateLearner(): Promise<{ learnerId: string; created: boolean }> {
-  const store = await cookies();
-  const existingId = store.get(LEARNER_COOKIE)?.value;
-  if (existingId) {
-    const found = await prisma.learner.findUnique({ where: { id: existingId }, select: { id: true } });
-    if (found) return { learnerId: found.id, created: false };
-  }
-
+async function cloneFromTemplate(name: string, userId: string | null) {
   const template = await prisma.learner.findFirst({
     where: { isTemplate: true },
     include: { states: true },
   });
   if (!template) throw new Error("TEMPLATE_MISSING: run `npm run demo:reset` to seed the database");
 
-  const learner = await prisma.learner.create({
+  return prisma.learner.create({
     data: {
-      name: "Alex",
+      name,
+      userId,
       topicId: template.topicId,
       currentQuestion: template.currentQuestion as object,
       states: {
@@ -39,17 +28,52 @@ export async function getOrCreateLearner(): Promise<{ learnerId: string; created
           resolvingCount: s.resolvingCount,
         })),
       },
-      events: { create: { kind: "SESSION_START", payload: { clonedFrom: template.id } } },
+      events: { create: { kind: "SESSION_START", payload: { clonedFrom: template.id, userId } } },
     },
   });
-  return { learnerId: learner.id, created: true };
 }
 
-/** Deletes the visitor's learner row; the next state fetch clones a fresh one. */
+/**
+ * Resolves the learner for this request.
+ * Logged in  -> the account's learner (cloned from the seeded template on first login).
+ * Guest      -> a cookie-keyed private clone, so concurrent evaluators never share state.
+ */
+export async function getOrCreateLearner(): Promise<{
+  learnerId: string;
+  created: boolean;
+  user: { email: string; name: string } | null;
+}> {
+  const user = await currentUser();
+  if (user) {
+    const existing = await prisma.learner.findUnique({ where: { userId: user.id }, select: { id: true } });
+    if (existing) return { learnerId: existing.id, created: false, user };
+    const learner = await cloneFromTemplate(user.name, user.id);
+    return { learnerId: learner.id, created: false, user }; // no guest cookie needed
+  }
+
+  const store = await cookies();
+  const existingId = store.get(LEARNER_COOKIE)?.value;
+  if (existingId) {
+    const found = await prisma.learner.findUnique({ where: { id: existingId }, select: { id: true, userId: true } });
+    if (found && !found.userId) return { learnerId: found.id, created: false, user: null };
+  }
+  const learner = await cloneFromTemplate("Alex (guest)", null);
+  return { learnerId: learner.id, created: true, user: null };
+}
+
+/**
+ * Resets the CURRENT visitor's learner (guest clone or the account's learner).
+ * Accounts survive a reset - only the learner model is re-cloned fresh.
+ */
 export async function resetLearner(): Promise<void> {
+  const user = await currentUser();
+  if (user) {
+    await prisma.learner.deleteMany({ where: { userId: user.id, isTemplate: false } });
+    return;
+  }
   const store = await cookies();
   const id = store.get(LEARNER_COOKIE)?.value;
   if (id) {
-    await prisma.learner.deleteMany({ where: { id, isTemplate: false } });
+    await prisma.learner.deleteMany({ where: { id, isTemplate: false, userId: null } });
   }
 }

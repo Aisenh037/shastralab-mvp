@@ -16,6 +16,8 @@ model Learner {
   topicId         String                @default("binary_search")
   bottleneckId    String? // sticky bottleneck (hysteresis)
   currentQuestion Json? // { question, targetConceptId, expectedConceptIds[], difficulty, why, source, targetsMisconceptionId? }
+  userId          String?               @unique
+  user            User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt       DateTime              @default(now())
   states          LearnerConceptState[]
   events          LearningEvent[]
@@ -87,4 +89,15 @@ model PromptExecutionLog {
   source       String // GEMINI | FALLBACK
   createdAt    DateTime @default(now())
   learner      Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+}
+
+// Real accounts. Guests still work (Learner.userId = null); an account binds
+// one learner model to an email so progress survives browsers/devices.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  learner      Learner?
 }

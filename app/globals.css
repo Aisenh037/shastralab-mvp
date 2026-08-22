@@ -1,18 +1,19 @@
 @import "tailwindcss";
 
-/* ShastraLab commits to a single dark, technical look (Linear / AI Studio). */
+/* ShastraLab light theme: clean clinical paper - the lab-report aesthetic.
+   All colors are AA-checked against their backgrounds. */
 :root {
-  --background: #0b0d12;
-  --panel: #12151c;
-  --panel-2: #171b24;
-  --border: #222836;
-  --foreground: #e6e9f0;
-  --muted: #8a93a5;
-  --gemini: #8b9cf9; /* AI-generated content */
-  --engine: #34d399; /* deterministic engine output */
-  --warn: #f59e0b;
-  --danger: #f87171;
-  --resolving: #a78bfa;
+  --background: #f5f7fb;
+  --panel: #ffffff;
+  --panel-2: #f1f4f9;
+  --border: #e2e7f0;
+  --foreground: #0f172a;
+  --muted: #5a6577;
+  --gemini: #4f46e5; /* AI-generated content (indigo-600, 6.3:1 on white) */
+  --engine: #047857; /* deterministic engine output (emerald-700, 5.2:1) */
+  --warn: #b45309; /* amber-700, 5.0:1 */
+  --danger: #dc2626;
+  --resolving: #7c3aed;
 }
 
 @theme inline {
@@ -37,6 +38,17 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+/* Keyboard navigation stays visible. */
+:focus-visible {
+  outline: 2px solid var(--gemini);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
 /* Graph node fills animate when the engine updates state. */
 svg circle,
 svg line {
@@ -48,9 +60,23 @@ svg line {
 }
 
 @keyframes pulse-once {
-  0% { box-shadow: 0 0 0 0 rgba(139, 156, 249, 0.5); }
-  100% { box-shadow: 0 0 0 12px rgba(139, 156, 249, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.35); }
+  100% { box-shadow: 0 0 0 12px rgba(79, 70, 229, 0); }
 }
 .flash {
   animation: pulse-once 1.2s ease-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  svg circle,
+  svg line,
+  .bar-fill {
+    transition: none;
+  }
+  .flash {
+    animation: none;
+  }
+  .animate-pulse {
+    animation: none;
+  }
 }
