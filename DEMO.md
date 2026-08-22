@@ -39,7 +39,7 @@ Point at the GEMINI chips: model name, seconds, tokens — *"every call logged, 
 The next question (Gemini-generated, targets search_space_reduction) is on screen. Confidence **Confident**, type LIVE:
 
 ```
-We discard the right half and keep searching the left half. That is safe because sorted order guarantees the target cannot be in the half we eliminated.
+We compare the target with the middle element: if the target is smaller we eliminate the right half, if larger we eliminate the left half. Sorted order guarantees the target cannot be in the eliminated half, so the search space halves every step.
 ```
 
 Submit. Point out: **CORRECT**, mastery bar jumps (delta capped at +25), and the misconception goes to **RESOLVING — confirmation 1 of 2**: *"one right answer never instantly clears a misconception; the next challenge exists to confirm it. That's rigor, not vibes."*

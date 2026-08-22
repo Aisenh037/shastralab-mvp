@@ -86,7 +86,8 @@ Return only JSON matching the schema.`,
 export const STRATEGY_DIRECTIVES: Partial<Record<StrategyId, string>> = {
   CONCEPTUAL_CORRECTION: `Directly challenge the detected misconception - name what the learner got wrong and show why it breaks.
 Anchor the explanation in a dictionary-lookup analogy (opening a dictionary near the middle and discarding an entire half).
-Maximum 120 words. End with one sentence that bridges toward the next question WITHOUT answering it.`,
+Maximum 120 words. End with one sentence that bridges toward the next question WITHOUT answering it.
+The question you generate must be CONCEPTUAL - answerable by explaining the mechanism in words. Do not require computing with a specific example array.`,
   PREREQUISITE_REMEDIATION: `Rebuild the weak prerequisite concept from the concepts the learner is already strong in.
 Do not mention the downstream topic until the final sentence. Maximum 120 words.`,
   GUIDED_HINT: `Give exactly one guiding hint that moves the learner one step deeper. Do not explain the full mechanism. Maximum 80 words.`,

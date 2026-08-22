@@ -42,3 +42,7 @@ next-env.d.ts
 
 # keep the env template
 !.env.example
+
+.vercel
+.env*
+demo-video/
