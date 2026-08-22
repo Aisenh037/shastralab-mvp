@@ -194,7 +194,7 @@ export default function LearnPage() {
         <section className="min-w-0 space-y-4">
           {q && (
             <Panel
-              title={`Question · targets ${nameById.get(q.targetConceptId) ?? q.targetConceptId} · ${q.difficulty}`}
+              title={`Question · targets ${nameById.get(q.targetConceptId) ?? q.targetConceptId} · ${q.difficulty.toLowerCase()}`}
               chip={q.source === "GEMINI" ? <Chip kind="GEMINI">generated</Chip> : <Chip kind="BANK">curriculum bank</Chip>}
               flash={!!turn}
             >

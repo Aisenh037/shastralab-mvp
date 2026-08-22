@@ -1,3 +1,4 @@
+import { misconceptionDisplay } from "@/lib/engine/constants";
 import { KnowledgeGraph } from "./graph";
 import { Chip, MasteryBar, Panel } from "./ui";
 import type { LearnerState, Receipt, TurnResult } from "@/lib/ui-types";
@@ -28,16 +29,17 @@ export function RightRail({
             <MasteryBar label={`${nameById.get(state.topicId)} (topic)`} value={topic.mastery} status={topic.status} />
           )}
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-md bg-panel-2 p-2">
+            <div className="min-w-0 rounded-md bg-panel-2 p-2">
               <p className="text-muted">current root cause</p>
-              <p className="mt-0.5 text-foreground">
+              <p className="mt-0.5 break-words text-foreground">
                 {state.bottleneckId ? nameById.get(state.bottleneckId) : "none found yet"}
               </p>
             </div>
-            <div className="rounded-md bg-panel-2 p-2">
+            <div className="min-w-0 rounded-md bg-panel-2 p-2">
               <p className="text-muted">active misconception</p>
               <p
-                className={`mt-0.5 ${
+                title={activeMisconception?.misconceptionId ?? undefined}
+                className={`mt-0.5 break-words ${
                   activeMisconception
                     ? activeMisconception.status === "RESOLVING"
                       ? "text-resolving"
@@ -46,7 +48,7 @@ export function RightRail({
                 }`}
               >
                 {activeMisconception
-                  ? `${activeMisconception.misconceptionId}${activeMisconception.status === "RESOLVING" ? " (resolving)" : ""}`
+                  ? `${misconceptionDisplay(activeMisconception.misconceptionId)}${activeMisconception.status === "RESOLVING" ? " (resolving)" : ""}`
                   : "none active"}
               </p>
             </div>

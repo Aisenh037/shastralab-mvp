@@ -58,18 +58,30 @@ export const MAX_ANSWER_CHARS = 2000;
  */
 export const MISCONCEPTIONS: Record<
   MisconceptionId,
-  { label: string; targetConceptId: string }
+  { label: string; shortLabel: string; targetConceptId: string }
 > = {
   SPEED_WITHOUT_MECHANISM: {
     label: "Knows binary search is faster but cannot explain the halving mechanism",
+    shortLabel: "Speed without the mechanism",
     targetConceptId: "search_space_reduction",
   },
   SEQUENTIAL_SCAN_CONFUSION: {
     label: "Believes binary search scans elements one-by-one (confuses it with linear search)",
+    shortLabel: "Confuses with linear search",
     targetConceptId: "binary_search",
   },
   HALF_ELIMINATION_MISAPPLIED: {
     label: "Eliminates the wrong half of the search space, or mishandles the midpoint",
+    shortLabel: "Eliminates the wrong half",
     targetConceptId: "search_space_reduction",
   },
 };
+
+/** Human display name for any misconception id; falls back to de-snaked text. */
+export const misconceptionDisplay = (id: string | null | undefined): string => {
+  if (!id) return "";
+  return MISCONCEPTIONS[id as MisconceptionId]?.shortLabel ?? id.replace(/_/g, " ").toLowerCase();
+};
+
+/** Human display name for a strategy/enum token: CONCEPTUAL_CORRECTION -> "conceptual correction". */
+export const enumDisplay = (id: string): string => id.replace(/_/g, " ").toLowerCase();

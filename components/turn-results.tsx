@@ -1,3 +1,5 @@
+import { enumDisplay, MISCONCEPTIONS, misconceptionDisplay } from "@/lib/engine/constants";
+import type { MisconceptionId } from "@/lib/engine/types";
 import { Chip, MasteryBar, Panel } from "./ui";
 import type { CompiledPromptView, TurnResult } from "@/lib/ui-types";
 
@@ -103,7 +105,12 @@ export function TurnResults({
         </ul>
         {turn.analysis && turn.analysis.misconception !== "NONE" && (
           <div className="mt-3 rounded-lg border border-danger/40 bg-danger/10 p-3">
-            <p className="font-mono text-xs text-danger">root cause (nidān): {turn.analysis.misconception}</p>
+            <p className="text-sm text-danger">
+              <span className="font-semibold">Root cause (nidān):</span>{" "}
+              {MISCONCEPTIONS[turn.analysis.misconception as MisconceptionId]?.label ??
+                misconceptionDisplay(turn.analysis.misconception)}
+            </p>
+            <p className="mt-1 break-all font-mono text-[10px] text-danger/70">{turn.analysis.misconception}</p>
             {turn.analysis.evidence_quote && (
               <p className="mt-1 text-xs text-muted">your words: “{turn.analysis.evidence_quote}”</p>
             )}
@@ -156,7 +163,11 @@ export function TurnResults({
           <p className="text-sm leading-6">{turn.bottleneck.reason}</p>
           {turn.strategy && (
             <p className="mt-2 text-xs text-muted">
-              → prescription strategy: <span className="font-mono text-gemini">{turn.strategy.strategy}</span> targeting{" "}
+              → prescription strategy:{" "}
+              <span className="font-mono text-gemini" title={turn.strategy.strategy}>
+                {enumDisplay(turn.strategy.strategy)}
+              </span>{" "}
+              targeting{" "}
               <span className="text-foreground">{nameById.get(turn.strategy.targetConceptId)}</span>
             </p>
           )}
