@@ -24,7 +24,7 @@ function misconceptionEventLabel(event: string, label: string): string {
 
 function PromptBlocks({ prompt }: { prompt: CompiledPromptView }) {
   return (
-    <div className="mt-2 space-y-2">
+    <div className="scroll-slim mt-2 max-h-80 space-y-2 overflow-y-auto rounded-md pr-1">
       {prompt.blocks.map((b) => (
         <div
           key={b.label}

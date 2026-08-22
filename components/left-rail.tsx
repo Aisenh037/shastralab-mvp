@@ -22,7 +22,7 @@ export function LeftRail({
   currentTargetId: string | undefined;
 }) {
   return (
-    <aside className="space-y-4">
+    <aside className="scroll-slim space-y-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto">
       <Panel title="Learning path" chip={<Chip kind="ENGINE" />}>
         <ul className="space-y-2 text-sm">
           {pathOrder.map((id) => {

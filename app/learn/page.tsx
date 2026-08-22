@@ -51,6 +51,13 @@ export default function LearnPage() {
   const [activity, setActivity] = useState<Receipt[]>([]);
   const [turnCount, setTurnCount] = useState(0);
   const resultRef = useRef<HTMLDivElement>(null);
+  const questionRef = useRef<HTMLDivElement>(null);
+  const answerRef = useRef<HTMLTextAreaElement>(null);
+
+  function jumpToQuestion() {
+    questionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    answerRef.current?.focus({ preventScroll: true });
+  }
 
   const loadState = useCallback(async () => {
     try {
@@ -192,6 +199,7 @@ export default function LearnPage() {
 
         {/* CENTER: the adaptive loop */}
         <section className="min-w-0 space-y-4">
+          <div ref={questionRef} className="scroll-mt-4 space-y-4">
           {q && (
             <Panel
               title={`Question · targets ${nameById.get(q.targetConceptId) ?? q.targetConceptId} · ${q.difficulty.toLowerCase()}`}
@@ -205,6 +213,7 @@ export default function LearnPage() {
 
           <Panel title="Your answer">
             <textarea
+              ref={answerRef}
               aria-label="Your answer"
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
@@ -245,6 +254,7 @@ export default function LearnPage() {
               honest guess.
             </p>
           </Panel>
+          </div>
 
           {error && <div className="rounded-xl border border-danger/50 bg-danger/10 p-4 text-sm text-danger">{error}</div>}
 
@@ -265,7 +275,7 @@ export default function LearnPage() {
             </Panel>
           )}
 
-          <div ref={resultRef} aria-live="polite" role="status" className="sr-only">
+          <div ref={resultRef} aria-live="polite" role="status" className="scroll-mt-4 sr-only">
             {turn ? "Diagnosis ready" : ""}
           </div>
 
@@ -274,6 +284,17 @@ export default function LearnPage() {
 
         <RightRail state={state} turn={turn} activity={activity} turnCount={turnCount} nameById={nameById} />
       </div>
+
+      {/* After a turn, one tap returns to the (new) question - no scroll hunting. */}
+      {turn?.kind === "TURN" && !running && (
+        <button
+          type="button"
+          onClick={jumpToQuestion}
+          className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-gemini px-5 py-2.5 text-sm font-medium text-white shadow-lg transition hover:opacity-90"
+        >
+          ↑ Answer the next question
+        </button>
+      )}
     </main>
   );
 }

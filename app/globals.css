@@ -38,6 +38,28 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Slim scrollbars for bounded scroll regions (prompt viewer, rails, activity log). */
+.scroll-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.scroll-slim::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* Keyboard navigation stays visible. */
 :focus-visible {
   outline: 2px solid var(--gemini);

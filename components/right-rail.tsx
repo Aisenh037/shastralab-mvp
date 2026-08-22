@@ -22,7 +22,7 @@ export function RightRail({
   const activeMisconception = state.states.find((s) => s.misconceptionId && s.misconceptionScore > 0);
 
   return (
-    <aside className="space-y-4">
+    <aside className="scroll-slim space-y-4 pb-2 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto">
       <Panel title="Learner model" chip={<Chip kind="ENGINE" />}>
         <div className="space-y-3">
           {topic && (
