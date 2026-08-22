@@ -6,12 +6,19 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate",
+    "check": "tsx scripts/check-engine.ts",
+    "rehearse": "tsx --env-file=.env scripts/rehearse.ts",
+    "demo:reset": "prisma db push --force-reset --accept-data-loss && tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.18.0",
+    "@prisma/client": "^6.19.3",
     "next": "16.3.2",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -20,7 +27,9 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
+    "prisma": "^6.19.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.12",
     "typescript": "^5"
   }
 }

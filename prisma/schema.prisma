@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// A learner. The seeded "Alex" template (isTemplate=true) is cloned per visitor
+// so every evaluator gets a clean, private knowledge graph.
+model Learner {
+  id              String                @id @default(cuid())
+  name            String
+  isTemplate      Boolean               @default(false)
+  topicId         String                @default("binary_search")
+  bottleneckId    String? // sticky bottleneck (hysteresis)
+  currentQuestion Json? // { question, targetConceptId, expectedConceptIds[], difficulty, why, source, targetsMisconceptionId? }
+  createdAt       DateTime              @default(now())
+  states          LearnerConceptState[]
+  events          LearningEvent[]
+  logs            PromptExecutionLog[]
+}
+
+model Concept {
+  id       String                @id // e.g. "binary_search"
+  name     String
+  graphX   Int // hand-positioned SVG coordinates
+  graphY   Int
+  outEdges ConceptEdge[]         @relation("from")
+  inEdges  ConceptEdge[]         @relation("to")
+  states   LearnerConceptState[]
+}
+
+model ConceptEdge {
+  id     String  @id @default(cuid())
+  fromId String
+  toId   String
+  type   String // PREREQUISITE_OF | RELATED_TO | APPLIED_IN | COMMONLY_CONFUSED_WITH
+  from   Concept @relation("from", fields: [fromId], references: [id])
+  to     Concept @relation("to", fields: [toId], references: [id])
+
+  @@unique([fromId, toId, type])
+}
+
+// Per-learner, per-concept knowledge state. The LLM never writes this table
+// directly - only the deterministic engine does (loop invariant I1).
+model LearnerConceptState {
+  id                 String   @id @default(cuid())
+  learnerId          String
+  conceptId          String
+  mastery            Float
+  misconceptionScore Float    @default(0)
+  misconceptionId    String? // id from the closed taxonomy
+  status             String
+  attempts           Int      @default(0)
+  resolvingCount     Int      @default(0) // confirmations toward full resolution (needs 2)
+  updatedAt          DateTime @updatedAt
+  learner            Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  concept            Concept  @relation(fields: [conceptId], references: [id])
+
+  @@unique([learnerId, conceptId])
+}
+
+// Append-only event stream; the AI evaluation payload is folded in as Json.
+model LearningEvent {
+  id        String   @id @default(cuid())
+  learnerId String
+  kind      String // TURN | SESSION_START | RESET
+  payload   Json
+  createdAt DateTime @default(now())
+  learner   Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+}
+
+// Every AI execution, preserved verbatim. This table is the judge-facing
+// proof that the AI is real (loop invariant I2).
+model PromptExecutionLog {
+  id           String   @id @default(cuid())
+  learnerId    String
+  promptType   String // ANALYSIS | GENERATION
+  model        String
+  promptText   String
+  responseText String
+  latencyMs    Int
+  outputTokens Int      @default(0)
+  ok           Boolean
+  source       String // GEMINI | FALLBACK
+  createdAt    DateTime @default(now())
+  learner      Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+}
