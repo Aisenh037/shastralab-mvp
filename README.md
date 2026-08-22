@@ -6,6 +6,8 @@ Every AI learning app generates more content. ShastraLab generates the scarce th
 
 Built for **PromptWars** (Google for Developers × H2S).
 
+**Chosen vertical: Adaptive Learning Intelligence System** — an AI-powered learning system that understands a learner's evolving knowledge state and delivers a personalized learning experience. The persona: a learner ("Alex") resuming Binary Search with prior strengths, weak prerequisites, and a latent misconception; the system's job is to find and fix the root cause blocking progress, not to serve more content.
+
 ---
 
 ## Quickstart
@@ -93,6 +95,15 @@ Auth model: an account binds one learner model to an email (progress survives br
 | **evolving** | every answer runs the loop; the graph, bottleneck and strategy visibly change per turn |
 | personalized experience | prompts are compiled from *this learner's* graph — inspectable in "AI reasoning context" |
 | GenAI at the core | 2 structured Gemini calls per turn, all logged with receipts; UI distinguishes AI from engine everywhere |
+
+## Assumptions
+
+1. **One seeded domain (Binary Search), by design.** The engine, schema, prompt compiler, and taxonomy are domain-agnostic — a new topic is a new seed file (concepts, edges, rubric hints, misconception taxonomy), zero engine changes. One deep, verifiable loop was prioritized over shallow breadth.
+2. **Misconceptions come from a closed, expert-authored taxonomy.** The LLM diagnoses only within it (schema enum-locked). Discovering novel misconceptions from INSUFFICIENT/unmatched evidence is future work.
+3. **Self-reported confidence is honest input.** It feeds the calibration weights; adversarial confidence gaming is out of scope for an MVP.
+4. **A learner's free-text answer is gradeable evidence** only when it contains an actual claim - anything else (gibberish, restating the question) must write nothing to the learner model.
+5. **Free-tier Gemini quotas** - hence 2 structured calls per turn (not 3), key rotation on 429, and a deterministic, loudly-labeled fallback so a rate limit never breaks a session or fakes AI output.
+6. **Session model:** guests get a private cookie-keyed clone of the seeded learner; an account (bcrypt + HMAC session) binds one learner model to an email. One learner per account is an MVP simplification - the schema keys everything off learnerId, so multi-profile is additive.
 
 ## Beyond the hackathon
 
