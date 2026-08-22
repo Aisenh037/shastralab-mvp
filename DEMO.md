@@ -50,7 +50,7 @@ Show: **INSUFFICIENT_EVIDENCE — no state change**. *"No LLM call, zero graph w
 Then re-answer the current question with different phrasing (any variation) → show the analysis JSON/summary differs: *"nothing here is canned — same pipeline, different reasoning in, different diagnosis out."*
 
 ### Beat 6 — the lab report + logout (3:40–4:00)
-Point at the **Lab report** card: *"N real Gemini calls, total latency, tokens, zero canned responses — computed from the execution log table. The model is rented. The learner graph is owned. ShastraLab — diagnose first, teach second."*
+Point at the **Lab report** card: *"N real Gemini calls, total latency, tokens, zero canned responses — computed from the execution log table. The model is rented. The learner graph is owned. ShastraLab — diagnose first, teach second."* Click **Log out** as the closing click.
 
 ---
 
