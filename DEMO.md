@@ -6,8 +6,9 @@ Before recording: click **Reset session** once, reload.
 
 ---
 
-### Beat 0 — the thesis frame (0:00–0:25)
-Open `/` (start card), then click **Enter the lab**.
+### Beat 0 — login + thesis frame (0:00–0:30)
+Open `/` (start card) → **Log in / Sign up**. Type LIVE (pause so it's readable): `demo@shastralab.app` / `shastra123` → **Log in**.
+(The video guide asks for a natural flow starting at login; this also shows real auth. Guests can skip login — say so in one line.)
 Say/caption: *"Every team here built a content generator. ShastraLab is a diagnosis engine — it finds the root cause blocking a learner, using a knowledge graph + a prompt compiler + Gemini in a loop."*
 Point at: the already-colored knowledge graph (right pane) — *"this is what the system already believes about learner Alex."*
 
@@ -48,7 +49,7 @@ Type LIVE: `asdfghjkl` → submit.
 Show: **INSUFFICIENT_EVIDENCE — no state change**. *"No LLM call, zero graph writes. The system never hallucinates learner state."*
 Then re-answer the current question with different phrasing (any variation) → show the analysis JSON/summary differs: *"nothing here is canned — same pipeline, different reasoning in, different diagnosis out."*
 
-### Beat 6 — the lab report (3:40–4:00)
+### Beat 6 — the lab report + logout (3:40–4:00)
 Point at the **Lab report** card: *"N real Gemini calls, total latency, tokens, zero canned responses — computed from the execution log table. The model is rented. The learner graph is owned. ShastraLab — diagnose first, teach second."*
 
 ---
