@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "check": "tsx scripts/check-engine.ts",
     "rehearse": "tsx --env-file=.env scripts/rehearse.ts",
-    "demo:reset": "prisma db push --force-reset --accept-data-loss && tsx prisma/seed.ts"
+    "demo:reset": "prisma db push --force-reset --accept-data-loss && tsx prisma/seed.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@google/genai": "^2.18.0",
@@ -32,6 +33,7 @@
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }

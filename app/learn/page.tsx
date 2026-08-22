@@ -3,56 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { KnowledgeGraph } from "@/components/graph";
-import { Chip, MasteryBar, Panel, STATUS_COLOR } from "@/components/ui";
+import { LeftRail } from "@/components/left-rail";
+import { RightRail } from "@/components/right-rail";
+import { TurnResults } from "@/components/turn-results";
+import { Chip, Panel } from "@/components/ui";
+import type { LearnerState, Receipt, TurnResult } from "@/lib/ui-types";
 
 // ---------------------------------------------------------------------------
-// The lab bench: left = learning path, center = the adaptive loop,
-// right = live learner model + AI activity + Lab Report.
-// Every panel renders ONLY fields of real API payloads (loop invariant I5).
+// The lab bench. This page owns orchestration only (fetch, submit, session);
+// presentation lives in components/left-rail, turn-results, and right-rail.
 // ---------------------------------------------------------------------------
-
-interface ConceptRow { id: string; name: string; graphX: number; graphY: number }
-interface EdgeRow { fromId: string; toId: string; type: string }
-interface StateRow {
-  conceptId: string; mastery: number; misconceptionScore: number;
-  misconceptionId: string | null; status: string; attempts: number; resolvingCount: number;
-}
-interface Question {
-  question: string; targetConceptId: string; expectedConceptIds: string[];
-  difficulty: string; why: string; source: string;
-}
-interface LearnerState {
-  learnerId: string; name: string; user: { email: string; name: string } | null;
-  topicId: string; bottleneckId: string | null;
-  currentQuestion: Question; states: StateRow[]; concepts: ConceptRow[]; edges: EdgeRow[];
-  pathOrder: string[]; labTotals: { geminiCalls: number; totalLatencyMs: number; totalTokens: number };
-}
-interface Receipt { step: string; owner: string; ms: number; note: string; at: string }
-interface PromptBlock { label: string; text: string; fromGraph?: boolean }
-interface TurnResult {
-  kind: "TURN" | "INSUFFICIENT_EVIDENCE";
-  message?: string;
-  analysis?: {
-    concept_evidence: { concept_id: string; finding: string }[];
-    misconception: string; evidence_quote: string; reasoning_summary: string; confidence: number;
-  };
-  analysisSource?: string;
-  analysisMeta?: { latencyMs: number; outputTokens: number; model: string };
-  correctness?: string;
-  calibration?: { confidence: string; correctness: string; alpha: number };
-  graphDelta?: { conceptId: string; name: string; before: number; after: number; statusAfter: string; finding: string; alpha: number }[];
-  misconceptionEvents?: { conceptId: string; event: string; label: string }[];
-  bottleneck?: { conceptId: string | null; path: string[]; reason: string; decoy: { conceptId: string; mastery: number } | null };
-  strategy?: { strategy: string; targetConceptId: string; objective: string };
-  compiledPrompts?: { analysis?: { text: string; blocks: PromptBlock[] }; generation?: { text: string; blocks: PromptBlock[] } };
-  intervention?: { text: string; leverages: string[]; source: string };
-  interventionMeta?: { latencyMs: number; outputTokens: number; model: string };
-  nextQuestion?: Question;
-  receipts: Receipt[];
-  labTotals?: { geminiCalls: number; totalLatencyMs: number; totalTokens: number };
-  error?: string;
-}
 
 const RUNNING_STEPS = [
   "Observing answer",
@@ -71,12 +31,13 @@ const CONFIDENCE_OPTIONS = [
   { id: "CONFIDENT", label: "Confident" },
 ] as const;
 
-const FINDING_ICON: Record<string, string> = { PRESENT: "✓", MISAPPLIED: "△", ABSENT: "✗" };
-const FINDING_CLASS: Record<string, string> = {
-  PRESENT: "text-engine",
-  MISAPPLIED: "text-warn",
-  ABSENT: "text-danger",
-};
+/** Fetches the learner state; throws with the API's message on failure. */
+async function fetchLearnerState(): Promise<LearnerState> {
+  const res = await fetch("/api/learner/state");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Failed to load learner state");
+  return data as LearnerState;
+}
 
 export default function LearnPage() {
   const router = useRouter();
@@ -92,28 +53,29 @@ export default function LearnPage() {
   const resultRef = useRef<HTMLDivElement>(null);
 
   const loadState = useCallback(async () => {
-    const res = await fetch("/api/learner/state");
-    const data = await res.json();
-    if (!res.ok) setError(data.error ?? "Failed to load learner state");
-    else setState(data);
+    try {
+      setState(await fetchLearnerState());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load learner state");
+    }
   }, []);
 
-  // Initial fetch: setState happens in the async callback, after the await.
+  // Initial load; guarded against updates after unmount.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const res = await fetch("/api/learner/state");
-      const data = await res.json();
-      if (cancelled) return;
-      if (!res.ok) setError(data.error ?? "Failed to load learner state");
-      else setState(data);
-    })();
+    fetchLearnerState()
+      .then((s) => {
+        if (!cancelled) setState(s);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load learner state");
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Advances the "loop running" step list; the reset to 0 happens in submit().
+  // Advances the "loop running" step list; reset to 0 happens in submit().
   useEffect(() => {
     if (!running) return;
     const t = setInterval(() => setRunningStep((s) => Math.min(s + 1, RUNNING_STEPS.length - 1)), 1100);
@@ -179,12 +141,9 @@ export default function LearnPage() {
   const stateById = new Map(state.states.map((s) => [s.conceptId, s]));
   const nameById = new Map(state.concepts.map((c) => [c.id, c.name]));
   const q = state.currentQuestion;
-  const topic = stateById.get(state.topicId);
-  const activeMisconception = state.states.find((s) => s.misconceptionId && s.misconceptionScore > 0);
 
   return (
     <main className="mx-auto w-full max-w-[1400px] flex-1 p-4">
-      {/* Top bar */}
       <header className="mb-4 flex items-center justify-between rounded-xl border border-line bg-panel px-4 py-3">
         <div className="flex items-baseline gap-3">
           <span className="text-lg font-semibold tracking-tight">
@@ -194,10 +153,12 @@ export default function LearnPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="hidden font-mono text-[11px] text-muted md:inline">
-            {state.user ? `${state.user.name} (${state.user.email})` : `guest session`} · topic: {nameById.get(state.topicId)}
+            {state.user ? `${state.user.name} (${state.user.email})` : "guest session"} · topic:{" "}
+            {nameById.get(state.topicId)}
           </span>
           {state.user ? (
             <button
+              type="button"
               onClick={logout}
               className="rounded-md border border-line px-3 py-1.5 text-xs text-muted transition hover:border-gemini/50 hover:text-gemini"
             >
@@ -222,37 +183,12 @@ export default function LearnPage() {
       </header>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[230px_minmax(0,1fr)_340px]">
-        {/* LEFT: learning path */}
-        <aside className="space-y-4">
-          <Panel title="Learning path" chip={<Chip kind="ENGINE" />}>
-            <ul className="space-y-2 text-sm">
-              {state.pathOrder.map((id) => {
-                const s = stateById.get(id);
-                const isCurrent = q?.targetConceptId === id;
-                const icon =
-                  s?.status === "MISCONCEPTION_DETECTED" ? "✗" :
-                  s?.status === "RESOLVING" ? "◎" :
-                  s?.status === "MASTERED" || s?.status === "STRONG" ? "✓" :
-                  s?.status === "DEVELOPING" ? "◐" : "○";
-                return (
-                  <li key={id} className={`flex items-center justify-between ${isCurrent ? "text-foreground" : "text-muted"}`}>
-                    <span className="flex items-center gap-2">
-                      <span style={{ color: STATUS_COLOR[s?.status ?? "UNKNOWN"] }}>{icon}</span>
-                      {nameById.get(id)}
-                    </span>
-                    {isCurrent && <span className="font-mono text-[10px] text-gemini">● current</span>}
-                  </li>
-                );
-              })}
-            </ul>
-          </Panel>
-          <Panel title="How to read this" >
-            <p className="text-xs leading-5 text-muted">
-              <span className="text-engine">⚙ ENGINE</span> panels are deterministic - no LLM ever writes learner state.{" "}
-              <span className="text-gemini">✦ GEMINI</span> panels are real model calls, each logged with latency and tokens.
-            </p>
-          </Panel>
-        </aside>
+        <LeftRail
+          pathOrder={state.pathOrder}
+          stateById={stateById}
+          nameById={nameById}
+          currentTargetId={q?.targetConceptId}
+        />
 
         {/* CENTER: the adaptive loop */}
         <section className="min-w-0 space-y-4">
@@ -267,12 +203,14 @@ export default function LearnPage() {
             </Panel>
           )}
 
-          <Panel title="Your answer" >
+          <Panel title="Your answer">
             <textarea
               aria-label="Your answer"
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit();
+              }}
               rows={3}
               maxLength={2000}
               placeholder="Type your reasoning in your own words…"
@@ -303,21 +241,23 @@ export default function LearnPage() {
               </button>
             </div>
             <p className="mt-2 text-[11px] text-muted">
-              Your confidence feeds the calibration model: confidently-wrong shifts the learner model harder than an honest guess.
+              Your confidence feeds the calibration model: confidently-wrong shifts the learner model harder than an
+              honest guess.
             </p>
           </Panel>
 
-          {error && (
-            <div className="rounded-xl border border-danger/50 bg-danger/10 p-4 text-sm text-danger">
-              {error}
-            </div>
-          )}
+          {error && <div className="rounded-xl border border-danger/50 bg-danger/10 p-4 text-sm text-danger">{error}</div>}
 
           {running && (
-            <Panel className="motion-safe" title="Adaptive loop running" chip={<Chip kind="ENGINE" />}>
+            <Panel title="Adaptive loop running" chip={<Chip kind="ENGINE" />}>
               <ul className="space-y-1.5 font-mono text-xs">
                 {RUNNING_STEPS.map((s, i) => (
-                  <li key={s} className={i < runningStep ? "text-engine" : i === runningStep ? "animate-pulse text-foreground" : "text-muted/50"}>
+                  <li
+                    key={s}
+                    className={
+                      i < runningStep ? "text-engine" : i === runningStep ? "animate-pulse text-foreground" : "text-muted/50"
+                    }
+                  >
                     {i < runningStep ? "✓" : i === runningStep ? "▸" : "·"} {s}
                   </li>
                 ))}
@@ -325,256 +265,14 @@ export default function LearnPage() {
             </Panel>
           )}
 
-          <div ref={resultRef} aria-live="polite" role="status" className="sr-only">{turn ? "Diagnosis ready" : ""}</div>
+          <div ref={resultRef} aria-live="polite" role="status" className="sr-only">
+            {turn ? "Diagnosis ready" : ""}
+          </div>
 
-          {turn?.kind === "INSUFFICIENT_EVIDENCE" && !running && (
-            <Panel title="Diagnosis: insufficient evidence" chip={<Chip kind="ENGINE">no state change</Chip>}>
-              <p className="text-sm text-warn">{turn.message}</p>
-              <p className="mt-2 text-xs text-muted">
-                Loop invariant I3: an ungradeable answer writes nothing to the knowledge graph - no hallucinated learner state.
-              </p>
-            </Panel>
-          )}
-
-          {turn?.kind === "TURN" && !running && (
-            <>
-              {/* DIAGNOSIS */}
-              <Panel
-                title="Diagnosis"
-                chip={
-                  turn.analysisSource === "GEMINI" ? (
-                    <Chip kind="GEMINI">{turn.analysisMeta?.model} · {((turn.analysisMeta?.latencyMs ?? 0) / 1000).toFixed(1)}s · {turn.analysisMeta?.outputTokens} tok</Chip>
-                  ) : (
-                    <Chip kind="FALLBACK">heuristic scoring · no LLM call</Chip>
-                  )
-                }
-                flash
-              >
-                {turn.analysisSource === "FALLBACK" && (
-                  <p className="mb-2 rounded-md border border-warn/40 bg-warn/10 p-2 text-xs text-warn">
-                    AI temporarily unavailable - findings below come from deterministic keyword scoring, honestly labeled. No AI-generated content on this card.
-                  </p>
-                )}
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded-md px-2 py-1 font-mono text-xs ${
-                    turn.correctness === "CORRECT" ? "bg-engine/15 text-engine" :
-                    turn.correctness === "PARTIAL" ? "bg-warn/15 text-warn" : "bg-danger/15 text-danger"
-                  }`}>
-                    {turn.correctness}
-                  </span>
-                  <span className="font-mono text-[11px] text-muted">
-                    derived by the engine from rubric enums - the model never emits a score
-                  </span>
-                </div>
-                {turn.analysis?.reasoning_summary && (
-                  <p className="mt-3 text-sm leading-6 text-foreground/90">{turn.analysis.reasoning_summary}</p>
-                )}
-                <ul className="mt-3 space-y-1.5">
-                  {turn.analysis?.concept_evidence.map((ev) => (
-                    <li key={ev.concept_id} className="flex items-center gap-2 text-sm">
-                      <span className={`font-mono ${FINDING_CLASS[ev.finding]}`}>{FINDING_ICON[ev.finding]}</span>
-                      <span>{nameById.get(ev.concept_id) ?? ev.concept_id}</span>
-                      <span className="font-mono text-[11px] text-muted">{ev.finding}</span>
-                    </li>
-                  ))}
-                </ul>
-                {turn.analysis && turn.analysis.misconception !== "NONE" && (
-                  <div className="mt-3 rounded-lg border border-danger/40 bg-danger/10 p-3">
-                    <p className="font-mono text-xs text-danger">root cause (nidān): {turn.analysis.misconception}</p>
-                    {turn.analysis.evidence_quote && (
-                      <p className="mt-1 text-xs text-muted">your words: “{turn.analysis.evidence_quote}”</p>
-                    )}
-                  </div>
-                )}
-                {turn.calibration && (
-                  <p className="mt-3 rounded-md bg-panel-2 p-2 font-mono text-[11px] text-muted">
-                    calibration · self-reported <span className="text-foreground">{turn.calibration.confidence}</span> · scored{" "}
-                    <span className="text-foreground">{turn.calibration.correctness}</span> → update weight α=
-                    <span className={turn.calibration.alpha >= 0.45 ? "text-danger" : "text-foreground"}>{turn.calibration.alpha}</span>
-                    {turn.calibration.alpha >= 0.45 && " (confidently wrong - strongest signal)"}
-                  </p>
-                )}
-              </Panel>
-
-              {/* GRAPH DELTA */}
-              {turn.graphDelta && turn.graphDelta.length > 0 && (
-                <Panel title="Knowledge graph updated" chip={<Chip kind="ENGINE">deterministic · no LLM</Chip>} flash>
-                  <div className="space-y-3">
-                    {turn.graphDelta.map((d) => (
-                      <MasteryBar
-                        key={d.conceptId}
-                        label={`${d.name} (${d.finding.toLowerCase()}, α=${d.alpha})`}
-                        value={d.after}
-                        status={d.statusAfter}
-                        delta={d.after - d.before}
-                      />
-                    ))}
-                  </div>
-                  {turn.misconceptionEvents?.map((m) => (
-                    <p key={m.conceptId + m.event} className={`mt-3 rounded-md p-2 font-mono text-xs ${
-                      m.event === "RESOLVING" || m.event === "RESOLVED" ? "bg-resolving/10 text-resolving" : "bg-danger/10 text-danger"
-                    }`}>
-                      {m.event === "RESOLVING"
-                        ? `misconception resolving (confirmation 1 of 2): ${m.label}`
-                        : m.event === "RESOLVED"
-                        ? `misconception fully resolved: ${m.label}`
-                        : `misconception ${m.event.toLowerCase()}: ${m.label}`}
-                    </p>
-                  ))}
-                </Panel>
-              )}
-
-              {/* ROOT CAUSE / BOTTLENECK */}
-              {turn.bottleneck && (
-                <Panel title="Root-cause search" chip={<Chip kind="ENGINE">graph traversal · 0ms · no LLM</Chip>}>
-                  <p className="text-sm leading-6">{turn.bottleneck.reason}</p>
-                  {turn.strategy && (
-                    <p className="mt-2 text-xs text-muted">
-                      → prescription strategy: <span className="font-mono text-gemini">{turn.strategy.strategy}</span> targeting{" "}
-                      <span className="text-foreground">{nameById.get(turn.strategy.targetConceptId)}</span>
-                    </p>
-                  )}
-                </Panel>
-              )}
-
-              {/* PRESCRIPTION */}
-              {turn.intervention && (
-                turn.intervention.source === "GEMINI" ? (
-                  <Panel
-                    title="Prescription"
-                    chip={<Chip kind="GEMINI">{turn.interventionMeta?.model} · {((turn.interventionMeta?.latencyMs ?? 0) / 1000).toFixed(1)}s · {turn.interventionMeta?.outputTokens} tok</Chip>}
-                    flash
-                  >
-                    <p className="whitespace-pre-line text-[15px] leading-7">{turn.intervention.text}</p>
-                    {turn.intervention.leverages.length > 0 && (
-                      <p className="mt-3 font-mono text-[11px] text-muted">
-                        built on your strong concepts: {turn.intervention.leverages.map((id) => nameById.get(id) ?? id).join(", ")}
-                      </p>
-                    )}
-                  </Panel>
-                ) : (
-                  <Panel title="Prescription" chip={<Chip kind="FALLBACK">AI unavailable</Chip>}>
-                    <p className="text-sm text-warn">
-                      AI generation is temporarily unavailable, so no explanation is shown - this system never fabricates AI output.
-                      An authored practice question from the curriculum bank has been queued above instead. Retry on the next answer.
-                    </p>
-                  </Panel>
-                )
-              )}
-
-              {/* AI REASONING CONTEXT (the compiled prompts) */}
-              {turn.compiledPrompts?.analysis && (
-                <Panel title="AI reasoning context - the compiled prompts" chip={<Chip kind="ENGINE">prompt compiler</Chip>}>
-                  <p className="mb-2 text-xs text-muted">
-                    Prompts are compiled from the knowledge graph per turn - highlighted blocks were injected from YOUR learner state. This is the exact text sent to Gemini, logged verbatim.
-                  </p>
-                  <details open className="mb-2">
-                    <summary className="cursor-pointer font-mono text-xs text-gemini">call A - rubric analysis prompt</summary>
-                    <div className="mt-2 space-y-2">
-                      {turn.compiledPrompts.analysis.blocks.map((b) => (
-                        <div key={b.label} className={`rounded-md border p-2 ${b.fromGraph ? "border-gemini/40 bg-gemini/5" : "border-line bg-panel-2"}`}>
-                          <p className="font-mono text-[10px] uppercase tracking-wider text-muted">{b.label}{b.fromGraph && <span className="text-gemini"> · from graph</span>}</p>
-                          <pre className="mt-1 whitespace-pre-wrap font-mono text-[11px] leading-5 text-foreground/85">{b.text}</pre>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                  {turn.compiledPrompts.generation && (
-                    <details>
-                      <summary className="cursor-pointer font-mono text-xs text-gemini">call B - intervention + next-question prompt</summary>
-                      <div className="mt-2 space-y-2">
-                        {turn.compiledPrompts.generation.blocks.map((b) => (
-                          <div key={b.label} className={`rounded-md border p-2 ${b.fromGraph ? "border-gemini/40 bg-gemini/5" : "border-line bg-panel-2"}`}>
-                            <p className="font-mono text-[10px] uppercase tracking-wider text-muted">{b.label}{b.fromGraph && <span className="text-gemini"> · from graph</span>}</p>
-                            <pre className="mt-1 whitespace-pre-wrap font-mono text-[11px] leading-5 text-foreground/85">{b.text}</pre>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  )}
-                </Panel>
-              )}
-            </>
-          )}
+          {turn && !running && <TurnResults turn={turn} nameById={nameById} />}
         </section>
 
-        {/* RIGHT: live learner model */}
-        <aside className="space-y-4">
-          <Panel title="Learner model" chip={<Chip kind="ENGINE" />}>
-            <div className="space-y-3">
-              {topic && (
-                <MasteryBar label={`${nameById.get(state.topicId)} (topic)`} value={topic.mastery} status={topic.status} />
-              )}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-md bg-panel-2 p-2">
-                  <p className="text-muted">current root cause</p>
-                  <p className="mt-0.5 text-foreground">{state.bottleneckId ? nameById.get(state.bottleneckId) : "none found yet"}</p>
-                </div>
-                <div className="rounded-md bg-panel-2 p-2">
-                  <p className="text-muted">active misconception</p>
-                  <p className={`mt-0.5 ${activeMisconception ? (activeMisconception.status === "RESOLVING" ? "text-resolving" : "text-danger") : "text-engine"}`}>
-                    {activeMisconception
-                      ? `${activeMisconception.misconceptionId}${activeMisconception.status === "RESOLVING" ? " (resolving)" : ""}`
-                      : "none active"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </Panel>
-
-          <Panel title="Knowledge graph" chip={<Chip kind="ENGINE" />}>
-            <KnowledgeGraph
-              concepts={state.concepts}
-              edges={state.edges}
-              states={state.states}
-              highlightPath={turn?.kind === "TURN" ? turn.bottleneck?.path ?? [] : []}
-              bottleneckId={state.bottleneckId}
-            />
-            <p className="mt-1 text-[10px] leading-4 text-muted">
-              solid = prerequisite · dashed = related · dotted = commonly confused. Node size grows with mastery; the dashed ring marks the current root cause.
-            </p>
-          </Panel>
-
-          <Panel title="Lab report" chip={<Chip kind="ENGINE">from execution logs</Chip>}>
-            <div className="grid grid-cols-2 gap-2 text-center">
-              <div className="rounded-md bg-panel-2 p-2">
-                <p className="font-mono text-lg text-gemini">{state.labTotals.geminiCalls}</p>
-                <p className="text-[10px] text-muted">real Gemini calls</p>
-              </div>
-              <div className="rounded-md bg-panel-2 p-2">
-                <p className="font-mono text-lg text-foreground">{(state.labTotals.totalLatencyMs / 1000).toFixed(1)}s</p>
-                <p className="text-[10px] text-muted">total AI latency</p>
-              </div>
-              <div className="rounded-md bg-panel-2 p-2">
-                <p className="font-mono text-lg text-foreground">{state.labTotals.totalTokens}</p>
-                <p className="text-[10px] text-muted">output tokens</p>
-              </div>
-              <div className="rounded-md bg-panel-2 p-2">
-                <p className="font-mono text-lg text-engine">{turnCount}</p>
-                <p className="text-[10px] text-muted">loop turns (this visit)</p>
-              </div>
-            </div>
-            <p className="mt-2 text-[10px] text-muted">0 canned responses - every AI panel above is a logged live call.</p>
-          </Panel>
-
-          <Panel title="AI activity" chip={<Chip kind="ENGINE">real timestamps</Chip>}>
-            {activity.length === 0 ? (
-              <p className="text-xs text-muted">Submit an answer to watch the loop execute step by step.</p>
-            ) : (
-              <ul className="max-h-72 space-y-1.5 overflow-y-auto font-mono text-[10.5px] leading-4">
-                {activity.map((r, i) => (
-                  <li key={i} className="flex gap-2">
-                    <span className="shrink-0 text-muted">{new Date(r.at).toLocaleTimeString()}</span>
-                    <span className={r.owner === "GEMINI" ? "text-gemini" : r.owner === "FALLBACK" ? "text-warn" : "text-engine"}>
-                      {r.step}
-                    </span>
-                    <span className="truncate text-muted" title={r.note}>{r.note}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-        </aside>
+        <RightRail state={state} turn={turn} activity={activity} turnCount={turnCount} nameById={nameById} />
       </div>
     </main>
   );

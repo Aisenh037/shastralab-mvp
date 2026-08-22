@@ -79,14 +79,13 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
 
   // ---- 1. OBSERVE -----------------------------------------------------------
   const tObserve = Date.now();
-  const learner = await prisma.learner.findUnique({
-    where: { id: learnerId },
-    include: { states: true },
-  });
+  const [learner, edgeRows] = await Promise.all([
+    prisma.learner.findUnique({ where: { id: learnerId }, include: { states: true } }),
+    prisma.conceptEdge.findMany(),
+  ]);
   if (!learner || !learner.currentQuestion) throw new Error("LEARNER_NOT_FOUND");
   const question = learner.currentQuestion as unknown as QuestionSpec;
   const states = new Map(learner.states.map((s) => [s.conceptId, toView(s)]));
-  const edgeRows = await prisma.conceptEdge.findMany();
   const edges: EdgeRef[] = edgeRows.map((e) => ({
     fromId: e.fromId,
     toId: e.toId,
@@ -117,7 +116,7 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
     promptType: "ANALYSIS",
     prompt: analysisPrompt.text,
     responseSchema: analysisResponseSchema(question.expectedConceptIds),
-    zodSchema: analysisZod(question.expectedConceptIds) as never,
+    zodSchema: analysisZod(question.expectedConceptIds),
     temperature: 0.1,
   });
   let analysis: AnalysisResult;
@@ -280,7 +279,7 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
     promptType: "GENERATION",
     prompt: generationPrompt.text,
     responseSchema: generationResponseSchema(ALL_CONCEPT_IDS),
-    zodSchema: generationZod(ALL_CONCEPT_IDS) as never,
+    zodSchema: generationZod(ALL_CONCEPT_IDS),
     temperature: 0.3,
   });
   // Cross-call contract: the generated question must target the strategy's concept.
@@ -292,7 +291,7 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
         generationPrompt.text +
         `\n\n## CORRECTION\nYour previous next_question targeted "${genCall.data.next_question.target_concept}". It MUST target "${strategy.targetConceptId}". Regenerate.`,
       responseSchema: generationResponseSchema(ALL_CONCEPT_IDS),
-      zodSchema: generationZod(ALL_CONCEPT_IDS) as never,
+      zodSchema: generationZod(ALL_CONCEPT_IDS),
       temperature: 0.3,
     });
   }

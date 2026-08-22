@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getOrCreateLearner, LEARNER_COOKIE } from "@/lib/session";
+import { getOrCreateLearner, LEARNER_COOKIE, LEARNER_COOKIE_OPTS } from "@/lib/session";
 import { PATH_ORDER } from "@/lib/seed-data";
 
 export const dynamic = "force-dynamic";
@@ -45,13 +45,7 @@ export async function GET() {
       recentLogs,
     });
     if (created) {
-      res.cookies.set(LEARNER_COOKIE, learnerId, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 60 * 60 * 24 * 30,
-        path: "/",
-      });
+      res.cookies.set(LEARNER_COOKIE, learnerId, LEARNER_COOKIE_OPTS);
     }
     return res;
   } catch (e) {

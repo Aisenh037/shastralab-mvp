@@ -65,7 +65,7 @@ async function main() {
         promptType: "ANALYSIS",
         prompt: prompt.text,
         responseSchema: analysisResponseSchema(c.question.expectedConceptIds),
-        zodSchema: analysisZod(c.question.expectedConceptIds) as never,
+        zodSchema: analysisZod(c.question.expectedConceptIds),
         temperature: 0.1,
       });
       if (!res.ok || !res.data) {

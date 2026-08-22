@@ -25,7 +25,7 @@ async function main() {
     promptType: "ANALYSIS",
     prompt: prompt.text,
     responseSchema: analysisResponseSchema(OPENING_QUESTION.expectedConceptIds),
-    zodSchema: analysisZod(OPENING_QUESTION.expectedConceptIds) as never,
+    zodSchema: analysisZod(OPENING_QUESTION.expectedConceptIds),
     temperature: 0.1,
   });
   console.log("ok:", res.ok, "| latency:", res.latencyMs + "ms", "| tokens:", res.outputTokens, "| model:", res.model);

@@ -4,6 +4,15 @@ import { currentUser } from "./auth";
 
 export const LEARNER_COOKIE = "sl_learner";
 
+/** Cookie options for the guest learner cookie (mirrors the auth session cookie). */
+export const LEARNER_COOKIE_OPTS = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  maxAge: 60 * 60 * 24 * 30,
+  path: "/",
+};
+
 async function cloneFromTemplate(name: string, userId: string | null) {
   const template = await prisma.learner.findFirst({
     where: { isTemplate: true },

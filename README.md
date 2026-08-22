@@ -21,7 +21,8 @@ npm run dev            # http://localhost:3000
 
 | Script | What it does |
 |---|---|
-| `npm run check` | Plain-assert verification of the deterministic engine (bottleneck, calibration, misconception lifecycle) |
+| `npm test` | Vitest suite: engine (bottleneck, calibration, lifecycle, strategy), session tokens, fallback honesty, rate limiter |
+| `npm run check` | Plain-assert engine verification (framework-free mirror of the core suite) |
 | `npm run rehearse` | Fires the scripted demo answers at the REAL analysis pipeline N times, prints verdict stability |
 | `npm run demo:reset` | Full DB reset + reseed |
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runTurn } from "@/lib/loop";
-import { getOrCreateLearner, LEARNER_COOKIE } from "@/lib/session";
+import { getOrCreateLearner, LEARNER_COOKIE, LEARNER_COOKIE_OPTS } from "@/lib/session";
 import { MAX_ANSWER_CHARS } from "@/lib/engine/constants";
 
 export const dynamic = "force-dynamic";
@@ -35,13 +35,7 @@ export async function POST(req: Request) {
     const result = await runTurn(learnerId, answer, confidence);
     const res = NextResponse.json(result);
     if (created) {
-      res.cookies.set(LEARNER_COOKIE, learnerId, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 60 * 60 * 24 * 30,
-        path: "/",
-      });
+      res.cookies.set(LEARNER_COOKIE, learnerId, LEARNER_COOKIE_OPTS);
     }
     return res;
   } catch (e) {

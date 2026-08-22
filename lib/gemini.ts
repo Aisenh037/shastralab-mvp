@@ -1,6 +1,15 @@
 import { GoogleGenAI, ThinkingLevel, type Schema } from "@google/genai";
-import type { z } from "zod";
 import { prisma } from "./db";
+
+/**
+ * Structural validator - any Zod schema satisfies this shape. The output type
+ * is asserted once, inside callGemini, because Zod's .catch() widens inferred
+ * output types; keeping the single assertion here beats a cast at every call site.
+ */
+export interface Validator<T> {
+  safeParse(input: unknown): { success: boolean; data?: unknown; error?: { issues: { message: string }[] } };
+  readonly _outputMarker?: T;
+}
 
 // ---------------------------------------------------------------------------
 // Single choke-point for every LLM call. Guarantees:
@@ -14,6 +23,17 @@ export const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const keys = [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_FALLBACK].filter(
   (k): k is string => Boolean(k),
 );
+
+// One client per key for the process lifetime - no per-call construction.
+const clients = new Map<string, GoogleGenAI>();
+const clientFor = (key: string) => {
+  let c = clients.get(key);
+  if (!c) {
+    c = new GoogleGenAI({ apiKey: key });
+    clients.set(key, c);
+  }
+  return c;
+};
 
 export interface GeminiResult<T> {
   ok: boolean;
@@ -41,7 +61,7 @@ async function attempt(
   responseSchema: Schema,
   temperature: number,
 ): Promise<{ text: string; outputTokens: number }> {
-  const ai = new GoogleGenAI({ apiKey: key });
+  const ai = clientFor(key);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
@@ -78,7 +98,7 @@ export async function callGemini<T>(opts: {
   promptType: "ANALYSIS" | "GENERATION";
   prompt: string;
   responseSchema: Schema;
-  zodSchema: z.ZodType<T>;
+  zodSchema: Validator<T>;
   temperature: number;
 }): Promise<GeminiResult<T>> {
   const started = Date.now();
@@ -98,10 +118,10 @@ export async function callGemini<T>(opts: {
         outputTokens = res.outputTokens;
         const parsed = opts.zodSchema.safeParse(JSON.parse(localRepair(rawText)));
         if (parsed.success) {
-          data = parsed.data;
+          data = parsed.data as T; // sole assertion - see Validator note above
           error = null;
         } else {
-          error = `validation failed: ${parsed.error.issues[0]?.message ?? "unknown"}`;
+          error = `validation failed: ${parsed.error?.issues[0]?.message ?? "unknown"}`;
         }
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
