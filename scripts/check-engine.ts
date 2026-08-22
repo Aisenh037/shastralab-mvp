@@ -10,7 +10,9 @@ import { applyMisconception } from "../lib/engine/misconception";
 import { deriveStatus, updateMastery } from "../lib/engine/mastery";
 import { selectStrategy } from "../lib/engine/strategy";
 import type { ConceptStateView, EdgeRef } from "../lib/engine/types";
-import { CONCEPTS, EDGES, TEMPLATE_STATES, TOPIC_ID } from "../lib/seed-data";
+import { CONCEPTS, EDGES, OPENING_QUESTION, TEMPLATE_STATES, TOPIC_ID } from "../lib/seed-data";
+import { heuristicAnalysis } from "../lib/fallback";
+import { issueToken, verifyToken } from "../lib/auth-token";
 
 const names = new Map(CONCEPTS.map((c) => [c.id, c.name]));
 const edges: EdgeRef[] = EDGES.map((e) => ({ ...e }));
@@ -71,5 +73,21 @@ assert.equal(s1.strategy, "CONCEPTUAL_CORRECTION");
 assert.equal(s1.targetConceptId, "search_space_reduction");
 const s2 = selectStrategy(states, b, TOPIC_ID, names);
 assert.equal(s2.strategy, "PREREQUISITE_REMEDIATION", "weak prereq -> remediation when no misconception");
+
+// 5. Fallback scorer is honest: keyword overlap grades, but never invents a misconception.
+const fb = heuristicAnalysis(OPENING_QUESTION, "comparing with the middle eliminates half of the remaining search space");
+assert.equal(fb.misconception, "NONE", "fallback must never diagnose misconceptions");
+assert.ok(fb.concept_evidence.some((ev) => ev.finding === "PRESENT"), "fallback must credit keyword-backed concepts");
+const fbBad = heuristicAnalysis(OPENING_QUESTION, "no relevant vocabulary here at all whatsoever");
+assert.ok(fbBad.concept_evidence.every((ev) => ev.finding === "ABSENT"), "fallback must not credit unrelated prose");
+
+// 6. Session tokens: roundtrip works, tampering and expiry are rejected.
+process.env.AUTH_SECRET = process.env.AUTH_SECRET || "check-engine-secret";
+const token = issueToken("user_123");
+assert.equal(verifyToken(token), "user_123", "valid token must verify");
+assert.equal(verifyToken(token.slice(0, -2) + "xx"), null, "tampered signature must fail");
+assert.equal(verifyToken("user_456" + token.slice(8)), null, "swapped userId must fail");
+assert.equal(verifyToken(token, Date.now() + 31 * 24 * 60 * 60 * 1000), null, "expired token must fail");
+assert.equal(verifyToken(undefined), null, "missing token must fail");
 
 console.log("check-engine: all assertions passed");

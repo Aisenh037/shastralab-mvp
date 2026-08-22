@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { KnowledgeGraph } from "@/components/graph";
 import { Chip, MasteryBar, Panel, STATUS_COLOR } from "@/components/ui";
 
@@ -70,7 +71,6 @@ const CONFIDENCE_OPTIONS = [
   { id: "CONFIDENT", label: "Confident" },
 ] as const;
 
-const pct = (x: number) => `${Math.round(x * 100)}%`;
 const FINDING_ICON: Record<string, string> = { PRESENT: "✓", MISAPPLIED: "△", ABSENT: "✗" };
 const FINDING_CLASS: Record<string, string> = {
   PRESENT: "text-engine",
@@ -79,6 +79,7 @@ const FINDING_CLASS: Record<string, string> = {
 };
 
 export default function LearnPage() {
+  const router = useRouter();
   const [state, setState] = useState<LearnerState | null>(null);
   const [turn, setTurn] = useState<TurnResult | null>(null);
   const [answer, setAnswer] = useState("");
@@ -97,19 +98,31 @@ export default function LearnPage() {
     else setState(data);
   }, []);
 
+  // Initial fetch: setState happens in the async callback, after the await.
   useEffect(() => {
-    loadState();
-  }, [loadState]);
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/learner/state");
+      const data = await res.json();
+      if (cancelled) return;
+      if (!res.ok) setError(data.error ?? "Failed to load learner state");
+      else setState(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
+  // Advances the "loop running" step list; the reset to 0 happens in submit().
   useEffect(() => {
     if (!running) return;
-    setRunningStep(0);
     const t = setInterval(() => setRunningStep((s) => Math.min(s + 1, RUNNING_STEPS.length - 1)), 1100);
     return () => clearInterval(t);
   }, [running]);
 
   async function submit() {
     if (!answer.trim() || running) return;
+    setRunningStep(0);
     setRunning(true);
     setError(null);
     try {
@@ -145,7 +158,7 @@ export default function LearnPage() {
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    window.location.href = "/";
+    router.push("/");
   }
 
   if (!state) {
@@ -199,6 +212,7 @@ export default function LearnPage() {
             </Link>
           )}
           <button
+            type="button"
             onClick={resetSession}
             className="rounded-md border border-line px-3 py-1.5 text-xs text-muted transition hover:border-danger/50 hover:text-danger"
           >
@@ -255,6 +269,7 @@ export default function LearnPage() {
 
           <Panel title="Your answer" >
             <textarea
+              aria-label="Your answer"
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit(); }}
@@ -268,6 +283,7 @@ export default function LearnPage() {
                 {CONFIDENCE_OPTIONS.map((c) => (
                   <button
                     key={c.id}
+                    type="button"
                     onClick={() => setConfidence(c.id)}
                     className={`rounded-md px-3 py-1.5 text-xs transition ${
                       confidence === c.id ? "bg-gemini/20 text-gemini" : "text-muted hover:text-foreground"
@@ -278,6 +294,7 @@ export default function LearnPage() {
                 ))}
               </div>
               <button
+                type="button"
                 onClick={submit}
                 disabled={running || !answer.trim()}
                 className="rounded-lg bg-gemini px-5 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
@@ -297,7 +314,7 @@ export default function LearnPage() {
           )}
 
           {running && (
-            <Panel title="Adaptive loop running" chip={<Chip kind="ENGINE" />}>
+            <Panel className="motion-safe" title="Adaptive loop running" chip={<Chip kind="ENGINE" />}>
               <ul className="space-y-1.5 font-mono text-xs">
                 {RUNNING_STEPS.map((s, i) => (
                   <li key={s} className={i < runningStep ? "text-engine" : i === runningStep ? "animate-pulse text-foreground" : "text-muted/50"}>
@@ -308,7 +325,7 @@ export default function LearnPage() {
             </Panel>
           )}
 
-          <div ref={resultRef} />
+          <div ref={resultRef} aria-live="polite" role="status" className="sr-only">{turn ? "Diagnosis ready" : ""}</div>
 
           {turn?.kind === "INSUFFICIENT_EVIDENCE" && !running && (
             <Panel title="Diagnosis: insufficient evidence" chip={<Chip kind="ENGINE">no state change</Chip>}>

@@ -1,39 +1,19 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
+import { verifyToken } from "./auth-token";
 
 export const AUTH_COOKIE = "sl_auth";
-const SESSION_DAYS = 30;
+export { issueToken, verifyToken } from "./auth-token";
 
-// Stateless HMAC-signed session token: "<userId>.<expiresMs>.<hmac>".
-// No session table needed; AUTH_SECRET invalidates all sessions if rotated.
-function secret(): string {
-  const s = process.env.AUTH_SECRET;
-  if (!s) throw new Error("AUTH_SECRET is not configured");
-  return s;
-}
-
-const sign = (payload: string) => createHmac("sha256", secret()).update(payload).digest("base64url");
-
-export function issueToken(userId: string): string {
-  const exp = Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000;
-  const payload = `${userId}.${exp}`;
-  return `${payload}.${sign(payload)}`;
-}
-
-export function verifyToken(token: string | undefined): string | null {
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [userId, expStr, mac] = parts;
-  const expected = sign(`${userId}.${expStr}`);
-  const a = Buffer.from(mac);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  if (Number(expStr) < Date.now()) return null;
-  return userId;
-}
+/** Cookie options shared by every session cookie we set. */
+export const SESSION_COOKIE_OPTS = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  maxAge: 60 * 60 * 24 * 30,
+  path: "/",
+};
 
 /** The logged-in user for the current request, or null (guest). */
 export async function currentUser() {

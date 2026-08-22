@@ -154,6 +154,8 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
   const band = overallE >= CORRECT_EVIDENCE_THRESHOLD ? "correct" : "incorrect";
   const overallAlpha = ALPHA[band][confidence];
 
+  const originals = new Map(learner.states.map((s) => [s.conceptId, s.mastery]));
+  const dirty = new Set<string>(); // only states actually touched get persisted
   const deltas: {
     conceptId: string;
     name: string;
@@ -176,21 +178,17 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
     s.mastery = next;
     s.attempts += 1;
     s.status = deriveStatus(next, s.misconceptionScore, s.attempts, s.resolvingCount);
+    dirty.add(ev.concept_id);
     deltas.push({
       conceptId: ev.concept_id,
       name: conceptName.get(ev.concept_id) ?? ev.concept_id,
-      before: deltas.length ? s.mastery : s.mastery, // placeholder, fixed below
+      before: originals.get(ev.concept_id) ?? next,
       after: next,
       statusBefore,
       statusAfter: s.status,
       alpha,
       finding: ev.finding,
     });
-  }
-  // fix "before" values (recorded prior to mutation)
-  {
-    const originals = new Map(learner.states.map((s) => [s.conceptId, s.mastery]));
-    for (const d of deltas) d.before = originals.get(d.conceptId) ?? d.before;
   }
 
   // Misconception lifecycle.
@@ -205,6 +203,7 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
       s.resolvingCount = r.resolvingCount;
       s.misconceptionId = mid;
       s.status = deriveStatus(s.mastery, s.misconceptionScore, s.attempts, s.resolvingCount);
+      dirty.add(s.conceptId);
       misconceptionEvents.push({ conceptId: s.conceptId, event, label: MISCONCEPTIONS[mid].label });
     }
   } else if (question.targetsMisconceptionId) {
@@ -220,6 +219,7 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
       s.resolvingCount = r.resolvingCount;
       if (r.cleared) s.misconceptionId = null;
       s.status = deriveStatus(s.mastery, s.misconceptionScore, s.attempts, s.resolvingCount);
+      dirty.add(s.conceptId);
       misconceptionEvents.push({
         conceptId: s.conceptId,
         event: r.cleared ? "RESOLVED" : "RESOLVING",
@@ -229,7 +229,7 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
   }
 
   await prisma.$transaction(
-    [...states.values()].map((s) =>
+    [...states.values()].filter((s) => dirty.has(s.conceptId)).map((s) =>
       prisma.learnerConceptState.update({
         where: { learnerId_conceptId: { learnerId, conceptId: s.conceptId } },
         data: {
@@ -243,7 +243,7 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
       }),
     ),
   );
-  mark("UPDATE", "ENGINE", tUpdate, `${deltas.length} mastery updates, ${misconceptionEvents.length} misconception events - deterministic, no LLM`);
+  mark("UPDATE", "ENGINE", tUpdate, `${dirty.size} states written, ${misconceptionEvents.length} misconception events - deterministic, no LLM`);
 
   // ---- 5. BOTTLENECK ----------------------------------------------------------
   const tBottleneck = Date.now();
@@ -322,22 +322,24 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
   }
 
   // ---- 9. EMIT --------------------------------------------------------------------
-  await prisma.learner.update({
-    where: { id: learnerId },
-    data: { currentQuestion: nextQuestion as object, bottleneckId: bottleneck.conceptId },
-  });
-  await prisma.learningEvent.create({
-    data: {
-      learnerId,
-      kind: "TURN",
-      payload: { answer: trimmed, confidence, analysis, deltas, misconceptionEvents, strategy, correctness } as object,
-    },
-  });
-  const totals = await prisma.promptExecutionLog.aggregate({
-    where: { learnerId, source: "GEMINI", ok: true },
-    _count: { _all: true },
-    _sum: { latencyMs: true, outputTokens: true },
-  });
+  const [, , totals] = await Promise.all([
+    prisma.learner.update({
+      where: { id: learnerId },
+      data: { currentQuestion: nextQuestion as object, bottleneckId: bottleneck.conceptId },
+    }),
+    prisma.learningEvent.create({
+      data: {
+        learnerId,
+        kind: "TURN",
+        payload: { answer: trimmed, confidence, analysis, deltas, misconceptionEvents, strategy, correctness } as object,
+      },
+    }),
+    prisma.promptExecutionLog.aggregate({
+      where: { learnerId, source: "GEMINI", ok: true },
+      _count: { _all: true },
+      _sum: { latencyMs: true, outputTokens: true },
+    }),
+  ]);
   mark("EMIT", "ENGINE", Date.now(), "Learner state persisted; Lab Report totals refreshed");
 
   return {
