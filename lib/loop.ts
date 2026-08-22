@@ -6,15 +6,8 @@ import {
   CORRECT_EVIDENCE_THRESHOLD,
   MAX_ANSWER_CHARS,
   MIN_ANSWER_CHARS,
-  MISCONCEPTIONS,
 } from "./engine/constants";
-import {
-  deriveCorrectness,
-  deriveStatus,
-  evidenceScore,
-  updateMastery,
-} from "./engine/mastery";
-import { applyMisconception } from "./engine/misconception";
+import { deriveCorrectness, evidenceScore } from "./engine/mastery";
 import { findBottleneck } from "./engine/bottleneck";
 import { selectStrategy } from "./engine/strategy";
 import type {
@@ -22,26 +15,25 @@ import type {
   ConceptStateView,
   Confidence,
   EdgeRef,
-  MisconceptionId,
   QuestionSpec,
 } from "./engine/types";
+import { applyEvidence } from "./turn/apply-evidence";
+import { generateNextStep } from "./turn/generate";
 import {
   compileAnalysisPrompt,
   compileGenerationPrompt,
   compileLearnerContext,
 } from "./prompts/compiler";
-import {
-  analysisResponseSchema,
-  analysisZod,
-  generationResponseSchema,
-  generationZod,
-} from "./prompts/schemas";
-import { CONCEPTS, QUESTION_BANK } from "./seed-data";
+import { analysisResponseSchema, analysisZod } from "./prompts/schemas";
+import { CONCEPTS } from "./seed-data";
 
 // ---------------------------------------------------------------------------
-// The adaptive loop. One call = one full turn:
+// The adaptive loop orchestrator. One call = one full turn:
 // OBSERVE -> ANALYZE (Gemini A) -> VALIDATE -> UPDATE GRAPH -> BOTTLENECK ->
 // STRATEGY -> COMPILE -> GENERATE (Gemini B) -> EMIT.
+// Step 4 lives in turn/apply-evidence (pure state transition) and step 8 in
+// turn/generate (call B + contract enforcement); this file owns sequencing,
+// persistence, and the receipt trail.
 // Invariants: the LLM never writes state (I1); every AI execution is logged
 // before use (I2); INSUFFICIENT_EVIDENCE writes nothing (I3); graph writes are
 // transactional (I4); the UI renders only fields of this payload (I5).
@@ -55,7 +47,6 @@ export interface Receipt {
   at: string;
 }
 
-const ALL_CONCEPT_IDS = CONCEPTS.map((c) => c.id);
 const conceptName = new Map(CONCEPTS.map((c) => [c.id, c.name]));
 
 function toView(s: {
@@ -94,8 +85,7 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
 
   const trimmed = answer.trim();
   if (trimmed.length > MAX_ANSWER_CHARS) throw new Error("ANSWER_TOO_LONG");
-  const hasLetters = /[a-z]/i.test(trimmed);
-  if (trimmed.length < MIN_ANSWER_CHARS || !hasLetters) {
+  if (trimmed.length < MIN_ANSWER_CHARS || !/[a-z]/i.test(trimmed)) {
     // Pre-filter: no LLM call, no state writes (invariant I3).
     mark("OBSERVE", "ENGINE", tObserve, "Pre-filter: answer too short or no prose - no LLM call, no state change");
     return {
@@ -146,101 +136,35 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
     };
   }
 
-  // ---- 4. UPDATE GRAPH (deterministic, transactional) ------------------------
+  // ---- 4. UPDATE GRAPH (pure transition, then one transaction) ----------------
   const tUpdate = Date.now();
   const overallE = evidenceScore(analysis.concept_evidence);
   const correctness = deriveCorrectness(overallE);
-  const band = overallE >= CORRECT_EVIDENCE_THRESHOLD ? "correct" : "incorrect";
-  const overallAlpha = ALPHA[band][confidence];
-
-  const originals = new Map(learner.states.map((s) => [s.conceptId, s.mastery]));
-  const dirty = new Set<string>(); // only states actually touched get persisted
-  const deltas: {
-    conceptId: string;
-    name: string;
-    before: number;
-    after: number;
-    statusBefore: string;
-    statusAfter: string;
-    alpha: number;
-    finding: string;
-  }[] = [];
-  const misconceptionEvents: { conceptId: string; event: string; label: string }[] = [];
-
-  // Mastery updates from rubric evidence.
-  for (const ev of analysis.concept_evidence) {
-    const s = states.get(ev.concept_id);
-    if (!s) continue;
-    const e = ev.finding === "PRESENT" ? 1 : ev.finding === "MISAPPLIED" ? 0.25 : 0;
-    const { next, alpha } = updateMastery(s.mastery, e, confidence);
-    const statusBefore = s.status;
-    s.mastery = next;
-    s.attempts += 1;
-    s.status = deriveStatus(next, s.misconceptionScore, s.attempts, s.resolvingCount);
-    dirty.add(ev.concept_id);
-    deltas.push({
-      conceptId: ev.concept_id,
-      name: conceptName.get(ev.concept_id) ?? ev.concept_id,
-      before: originals.get(ev.concept_id) ?? next,
-      after: next,
-      statusBefore,
-      statusAfter: s.status,
-      alpha,
-      finding: ev.finding,
-    });
-  }
-
-  // Misconception lifecycle.
-  if (analysis.misconception !== "NONE") {
-    const mid = analysis.misconception as MisconceptionId;
-    const target = MISCONCEPTIONS[mid]?.targetConceptId;
-    const s = target ? states.get(target) : undefined;
-    if (s) {
-      const event = s.misconceptionId === mid && s.misconceptionScore > 0 ? "RECONFIRMED" : "DETECTED";
-      const r = applyMisconception(s.misconceptionScore, s.resolvingCount, event);
-      s.misconceptionScore = r.score;
-      s.resolvingCount = r.resolvingCount;
-      s.misconceptionId = mid;
-      s.status = deriveStatus(s.mastery, s.misconceptionScore, s.attempts, s.resolvingCount);
-      dirty.add(s.conceptId);
-      misconceptionEvents.push({ conceptId: s.conceptId, event, label: MISCONCEPTIONS[mid].label });
-    }
-  } else if (question.targetsMisconceptionId) {
-    // A question aimed at a misconception was answered without re-exhibiting it.
-    const mid = question.targetsMisconceptionId as MisconceptionId;
-    const target = MISCONCEPTIONS[mid]?.targetConceptId;
-    const s = target ? states.get(target) : undefined;
-    const targetEv = analysis.concept_evidence.find((ev) => ev.concept_id === target);
-    const targetCorrect = targetEv?.finding === "PRESENT";
-    if (s && s.misconceptionId === mid && s.misconceptionScore > 0 && targetCorrect) {
-      const r = applyMisconception(s.misconceptionScore, s.resolvingCount, "TARGETED_CORRECT");
-      s.misconceptionScore = r.score;
-      s.resolvingCount = r.resolvingCount;
-      if (r.cleared) s.misconceptionId = null;
-      s.status = deriveStatus(s.mastery, s.misconceptionScore, s.attempts, s.resolvingCount);
-      dirty.add(s.conceptId);
-      misconceptionEvents.push({
-        conceptId: s.conceptId,
-        event: r.cleared ? "RESOLVED" : "RESOLVING",
-        label: MISCONCEPTIONS[mid].label,
-      });
-    }
-  }
+  const overallAlpha = ALPHA[overallE >= CORRECT_EVIDENCE_THRESHOLD ? "correct" : "incorrect"][confidence];
+  const { deltas, misconceptionEvents, dirty } = applyEvidence({
+    states,
+    analysis,
+    question,
+    confidence,
+    conceptName,
+  });
 
   await prisma.$transaction(
-    [...states.values()].filter((s) => dirty.has(s.conceptId)).map((s) =>
-      prisma.learnerConceptState.update({
-        where: { learnerId_conceptId: { learnerId, conceptId: s.conceptId } },
-        data: {
-          mastery: s.mastery,
-          misconceptionScore: s.misconceptionScore,
-          misconceptionId: s.misconceptionId,
-          status: s.status,
-          attempts: s.attempts,
-          resolvingCount: s.resolvingCount,
-        },
-      }),
-    ),
+    [...states.values()]
+      .filter((s) => dirty.has(s.conceptId))
+      .map((s) =>
+        prisma.learnerConceptState.update({
+          where: { learnerId_conceptId: { learnerId, conceptId: s.conceptId } },
+          data: {
+            mastery: s.mastery,
+            misconceptionScore: s.misconceptionScore,
+            misconceptionId: s.misconceptionId,
+            status: s.status,
+            attempts: s.attempts,
+            resolvingCount: s.resolvingCount,
+          },
+        }),
+      ),
   );
   mark("UPDATE", "ENGINE", tUpdate, `${dirty.size} states written, ${misconceptionEvents.length} misconception events - deterministic, no LLM`);
 
@@ -258,73 +182,26 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
   const tCompile = Date.now();
   const context = compileLearnerContext(learnerId, learner.topicId, states, bottleneck.conceptId, strategy.strategy);
   const calibrationNote = `Self-reported ${confidence}, scored ${correctness} -> update weight alpha=${overallAlpha}`;
-  const difficulty = (states.get(strategy.targetConceptId)?.mastery ?? 0) < 0.35 ? "INTRO" : (states.get(strategy.targetConceptId)?.mastery ?? 0) < 0.7 ? "CORE" : "APPLIED";
+  const targetMastery = states.get(strategy.targetConceptId)?.mastery ?? 0;
+  const difficulty = targetMastery < 0.35 ? "INTRO" : targetMastery < 0.7 ? "CORE" : "APPLIED";
   const generationPrompt = compileGenerationPrompt(context, strategy, analysis.evidence_quote, calibrationNote, difficulty);
   mark("COMPILE", "ENGINE", tCompile, "Adaptive prompt compiled from graph state");
 
   // ---- 8. GENERATE (Gemini B: merged intervention + next question) ---------------
   const tGenerate = Date.now();
-  type Generation = {
-    intervention: { text: string; strategy_used: string; leverages: string[] };
-    next_question: {
-      question: string;
-      target_concept: string;
-      expected_concepts: string[];
-      difficulty: "INTRO" | "CORE" | "APPLIED";
-      why_this_question: string;
-    };
-  };
-  let genCall = await callGemini<Generation>({
+  const generation = await generateNextStep({
     learnerId,
-    promptType: "GENERATION",
-    prompt: generationPrompt.text,
-    responseSchema: generationResponseSchema(ALL_CONCEPT_IDS),
-    zodSchema: generationZod(ALL_CONCEPT_IDS),
-    temperature: 0.3,
+    promptText: generationPrompt.text,
+    strategy,
+    topicId: learner.topicId,
   });
-  // Cross-call contract: the generated question must target the strategy's concept.
-  if (genCall.ok && genCall.data && genCall.data.next_question.target_concept !== strategy.targetConceptId) {
-    genCall = await callGemini<Generation>({
-      learnerId,
-      promptType: "GENERATION",
-      prompt:
-        generationPrompt.text +
-        `\n\n## CORRECTION\nYour previous next_question targeted "${genCall.data.next_question.target_concept}". It MUST target "${strategy.targetConceptId}". Regenerate.`,
-      responseSchema: generationResponseSchema(ALL_CONCEPT_IDS),
-      zodSchema: generationZod(ALL_CONCEPT_IDS),
-      temperature: 0.3,
-    });
-  }
-
-  let intervention: { text: string; leverages: string[]; source: "GEMINI" | "UNAVAILABLE" };
-  let nextQuestion: QuestionSpec;
-  if (genCall.ok && genCall.data && genCall.data.next_question.target_concept === strategy.targetConceptId) {
-    intervention = { text: genCall.data.intervention.text, leverages: genCall.data.intervention.leverages, source: "GEMINI" };
-    nextQuestion = {
-      question: genCall.data.next_question.question,
-      targetConceptId: genCall.data.next_question.target_concept,
-      expectedConceptIds: [...new Set(genCall.data.next_question.expected_concepts)],
-      difficulty: genCall.data.next_question.difficulty,
-      why: genCall.data.next_question.why_this_question,
-      source: "GEMINI",
-      targetsMisconceptionId: strategy.targetsMisconceptionId,
-    };
-    mark("GENERATE", "GEMINI", tGenerate, `${MODEL} - intervention + next question (${genCall.outputTokens} tok)`);
-  } else {
-    // Honest degradation: no AI prose is fabricated; an authored bank question serves.
-    intervention = { text: "", leverages: [], source: "UNAVAILABLE" };
-    nextQuestion = {
-      ...(QUESTION_BANK[strategy.targetConceptId] ?? QUESTION_BANK[learner.topicId]),
-      targetsMisconceptionId: strategy.targetsMisconceptionId,
-    };
-    mark("GENERATE", "FALLBACK", tGenerate, `AI unavailable (${genCall.error ?? "target mismatch"}) - authored curriculum-bank question served, no generated prose`);
-  }
+  mark("GENERATE", generation.owner, tGenerate, generation.note);
 
   // ---- 9. EMIT --------------------------------------------------------------------
   const [, , totals] = await Promise.all([
     prisma.learner.update({
       where: { id: learnerId },
-      data: { currentQuestion: nextQuestion as object, bottleneckId: bottleneck.conceptId },
+      data: { currentQuestion: generation.nextQuestion as object, bottleneckId: bottleneck.conceptId },
     }),
     prisma.learningEvent.create({
       data: {
@@ -354,9 +231,9 @@ export async function runTurn(learnerId: string, answer: string, confidence: Con
     strategy,
     reasoningContext: context,
     compiledPrompts: { analysis: analysisPrompt, generation: generationPrompt },
-    intervention,
-    interventionMeta: { latencyMs: genCall.latencyMs, outputTokens: genCall.outputTokens, model: MODEL },
-    nextQuestion,
+    intervention: generation.intervention,
+    interventionMeta: generation.meta,
+    nextQuestion: generation.nextQuestion,
     receipts,
     labTotals: {
       geminiCalls: totals._count._all,
